@@ -254,13 +254,16 @@ class SDCard:
 
     def writeblocks(self, block_num, buf, offset=None):
         nblocks = len(buf) // 512
+        print("  writeblocks: block={} nblocks={}".format(block_num, nblocks))
         assert nblocks and not len(buf) % 512
         if nblocks == 1:
             # release=False keeps CS LOW through _write_block; a CS pulse
             # between CMD24 and the data packet confuses some cards.
-            if self._cmd(24, block_num * self.cdv, 0, release=False) != 0:
+            r24 = self._cmd(24, block_num * self.cdv, 0, release=False)
+            print("  CMD24 addr={} r1=0x{:02x}".format(block_num * self.cdv, r24 & 0xFF))
+            if r24 != 0:
                 self.cs(1)
-                raise OSError("SD: CMD24 write error")
+                raise OSError("SD: CMD24 write error (r1=0x{:02x})".format(r24 & 0xFF))
             self._write_block(_TOKEN_DATA, buf)
         else:
             if self._cmd(25, block_num * self.cdv, 0, release=False) != 0:
@@ -281,6 +284,13 @@ class SDCard:
                 off += 512
                 nblocks -= 1
             self.spi.write(bytes([_TOKEN_STOP_TRAN]))
+            # Keep CS LOW and wait for busy (MISO=0) to clear — the card
+            # programs the last block after receiving the stop token, and
+            # releasing CS without waiting causes the next CMD24 to see
+            # a stale MISO=0 which looks like a valid R1=0x00 (false positive).
+            self.spi.write(b"\xff")   # give card 1 byte to assert busy
+            while self.spi.read(1, 0xFF)[0] == 0:
+                pass
             self.cs(1)
             self.spi.write(b"\xff")
 

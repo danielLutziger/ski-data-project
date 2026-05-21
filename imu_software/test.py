@@ -153,15 +153,19 @@ def mount_sd():
     sd   = sdcard.SDCard(spi, cs, baudrate=100_000)
     print("  SD card OK  (cdv={}, sectors={})".format(sd.cdv, sd.sectors))
 
-    # Try several blocks — block 0 might not be special; a counterfeit card
-    # would fail on all blocks, a propagation-delay issue would fix at 100 kHz.
-    test_buf = bytearray(512)
-    for blk in (0, 1, 100, 1000):
-        try:
-            sd.readblocks(blk, test_buf)
-            print("  Block {:5d} OK — first bytes: {}".format(blk, list(test_buf[:4])))
-        except Exception as e:
-            print("  Block {:5d} FAIL: {}".format(blk, e))
+    # Raw write test before mounting — bypasses the filesystem layer entirely.
+    # Write a known pattern to block 1, then read it back to verify.
+    write_buf = bytearray(b'\xA5\x5A' * 256)   # recognisable pattern
+    try:
+        sd.writeblocks(1, write_buf)
+        read_back = bytearray(512)
+        sd.readblocks(1, read_back)
+        ok = read_back[:4] == write_buf[:4]
+        print("  Raw write block 1: {} — wrote {}, read back {}".format(
+            "OK" if ok else "MISMATCH",
+            list(write_buf[:4]), list(read_back[:4])))
+    except Exception as e:
+        print("  Raw write block 1 FAIL:", e)
 
     os.mount(sd, "/sd")  # type: ignore[attr-defined]
     print("  SD mounted OK")

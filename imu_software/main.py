@@ -1,76 +1,82 @@
 """
-main.py — Entry point for the RP2350-Zero ski IMU data logger.
+main.py — Entry point for the RP2350 ski IMU data logger.
 
 Boot sequence:
-  1. LED solid ON during hardware init
-  2. 3 s startup delay  (BNO055 power-on settling time)
-  3. Mount SD card       → fatal SOS blink if it fails
-  4. Detect BNO055       → fast-blink + 2 s retry until found
-  5. Open CSV session
-  6. Sample at 50 Hz; flush to SD every 50 samples (~1 s)
-  7. 1 Hz LED heartbeat while logging
-  8. Ctrl-C or power-loss → close session gracefully
+  1.  3 s startup delay  (BNO055 power-on settling)
+  2.  I2C scan + BNO055 detect/init
+  3.  Internal flash audit (storage.report without SD)
+  4.  Mount SD card
+  5.  Full storage report (with SD)
+  6.  Open CSV + LOG session files
+  7.  Sample BNO055 at 50 Hz; flush to SD every 50 samples (~1 s)
+  8.  Write health summary to log every 10 s (LOG_INTERVAL_SAMPLES)
+  9.  Power-loss or Ctrl-C → close session gracefully
+
+All human-readable output goes to both serial (USB) and the .log file on
+the SD card.  The device is designed to run unattended without a terminal.
 """
 
 import machine
 import time
 
-from config  import (
+from config import (
     I2C_ID, I2C_SDA, I2C_SCL, I2C_FREQ,
     BNO055_ADDR,
     SAMPLE_RATE_HZ, SAMPLE_INTERVAL_MS, STARTUP_DELAY_S,
+    LOG_INTERVAL_SAMPLES, CET_OFFSET_H,
 )
-from bno055   import BNO055
-from logger   import SDLogger
+from bno055  import BNO055
+from logger  import FileLog, SDLogger
 import storage
 
 
-# ── Helper: fatal SD halt ─────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
 
-def _halt_sd(msg): #led, msg):
-    print("[FATAL] {}  Halting.".format(msg))
-    #while True:
-    #    led.sd_error_pattern()
-
-
-# ── Helper: wait for BNO055 ───────────────────────────────────────────────
-
-def _wait_bno055(bno):#, led):
+def _wait_bno055(bno, log):
+    """Block until BNO055 responds on I2C, logging each retry."""
     while not bno.detect():
-        print("[WARN] BNO055 not found on I2C — retrying in 2 s …")
-        #led.error_fast(2000)
-    print("[OK]   BNO055 detected (chip ID 0xA0)")
+        log.warn("BNO", "BNO055 not found — retrying in 2 s")
+        time.sleep(2)
+    log.info("BNO", "Detected OK (chip ID 0xA0)")
 
 
-# ── Helper: attempt SD remount after write error ──────────────────────────
-
-def _remount(logger):#, led):
-    print("[WARN] SD write error — attempting remount …")
+def _remount(logger, log):
+    """Attempt SD remount after a write error.  Halts on repeated failure."""
+    log.error("SD", "Write error — attempting remount")
     try:
         logger.unmount()
         logger.mount()
         logger.open_session()
-        print("[OK]   SD remounted; continuing log")
+        log.info("SD", "Remount OK — continuing log")
     except OSError as exc:
-        _halt_sd("SD remount failed: {}".format(exc))
-        #_halt_sd(led, "SD remount failed: {}".format(exc))
+        log.error("SD", "Remount failed: {}  Halting.".format(exc))
+        while True:
+            time.sleep(10)
 
 
-# ── Main ──────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# Main
+# ─────────────────────────────────────────────────────────────────────────────
 
 def main():
-    #led = LED()
-    #led.on()        # solid ON during init
-    print()
-    print("=" * 48)
-    print("  Ski IMU Logger — RP2350-Zero + BNO055")
-    print("=" * 48)
+    # ── RTC (needed early so log timestamps are correct) ──────────────────────
+    try:
+        rtc = machine.RTC()
+    except Exception:
+        rtc = None
 
-    # ── 1. Startup delay ──────────────────────────────────────────────────
-    print("[BOOT] Waiting {} s for BNO055 to settle …".format(STARTUP_DELAY_S))
+    # ── FileLog: created before SD is mounted so boot messages are buffered ───
+    log = FileLog(rtc=rtc, cet_offset_h=CET_OFFSET_H)
+
+    log.info("BOOT", "=" * 44)
+    log.info("BOOT", "  Ski IMU Logger — RP2350 + BNO055")
+    log.info("BOOT", "=" * 44)
+    log.info("BOOT", "Waiting {} s for BNO055 to settle".format(STARTUP_DELAY_S))
     time.sleep(STARTUP_DELAY_S)
 
-    # ── 2. I2C + BNO055 ──────────────────────────────────────────────────
+    # ── I2C + BNO055 ──────────────────────────────────────────────────────────
     i2c = machine.I2C(
         I2C_ID,
         scl=machine.Pin(I2C_SCL),
@@ -78,89 +84,106 @@ def main():
         freq=I2C_FREQ,
     )
     found = i2c.scan()
-    print("[I2C]  Devices on bus: {}".format([hex(d) for d in found]))
+    log.info("I2C", "Scan: {}".format([hex(d) for d in found]))
 
     bno = BNO055(i2c, addr=BNO055_ADDR)
-    _wait_bno055(bno) #, led)
+    _wait_bno055(bno, log)
     bno.init()
 
-    # ── 3. Internal flash audit ───────────────────────────────────────────
-    storage.report()   # prints flash usage; SD not mounted yet so only flash shown
+    # ── Internal flash audit (SD not mounted yet) ─────────────────────────────
+    log.info("FLASH", "Internal flash audit:")
+    try:
+        import os
+        s = os.statvfs("/")
+        total_kb = (s[0] * s[2]) // 1024
+        free_kb  = (s[0] * s[3]) // 1024
+        used_kb  = total_kb - free_kb
+        log.info("FLASH", "{}/{} KB used  ({} KB free)".format(used_kb, total_kb, free_kb))
+        for f in os.listdir("/"):
+            log.info("FLASH", "  /{}".format(f))
+    except Exception as exc:
+        log.warn("FLASH", "Could not read flash: {}".format(exc))
 
-    # ── 4. SD card ────────────────────────────────────────────────────────
-    logger = SDLogger()
+    # ── SD card ───────────────────────────────────────────────────────────────
+    logger = SDLogger(log=log)
     try:
         logger.mount()
     except OSError as exc:
-        _halt_sd("SD mount failed: {}".format(exc))
+        log.error("SD", "Mount failed: {}  Halting.".format(exc))
+        while True:
+            time.sleep(10)
 
-    # Full storage report now SD is mounted — halts if card is unsafe
-    if not storage.report():
-        _halt_sd("SD storage check failed")
+    # Full storage report (SD now mounted)
+    sd_ok = storage.report()
+    if not sd_ok:
+        log.error("SD", "Storage check failed — SD full or missing.  Halting.")
+        while True:
+            time.sleep(10)
 
-    # ── 5. Open session ───────────────────────────────────────────────────
-    try:
-        rtc = machine.RTC()
-    except Exception:
-        rtc = None
-
+    # ── Open session (CSV + LOG files created here) ───────────────────────────
     fname = logger.open_session(rtc=rtc)
-    storage.guard_path("/sd/" + fname)   # ensures file is on SD, not flash
-    print("[LOG]  Filename    : {}".format(fname))
-    print("[LOG]  Sample rate : {} Hz  ({} ms interval)".format(
+    storage.guard_path("/sd/" + fname)
+
+    log.info("LOG", "Sample rate : {} Hz  ({} ms interval)".format(
         SAMPLE_RATE_HZ, SAMPLE_INTERVAL_MS))
+    log.info("LOG", "Logging started — running unattended")
 
-    #led.off()
-    print("[LOG]  Logging started — Ctrl-C to stop gracefully")
-    print()
-
-    # ── 5. Logging loop ───────────────────────────────────────────────────
+    # ── Sampling loop ─────────────────────────────────────────────────────────
     sample_total   = 0
-    rate_count     = 0          # samples in current 1 s window
+    rate_count     = 0
     rate_window_t  = time.ticks_ms()
     achieved_hz    = 0
     overrun_count  = 0
+    next_log_at    = LOG_INTERVAL_SAMPLES    # sample count for next health line
 
     try:
         while True:
             t0 = time.ticks_ms()
 
-            # Read all sensor fields (two I2C transactions)
             data = bno.read_all()
 
-            # Buffer the row; flush triggers automatically at BUFFER_SIZE
             try:
                 logger.log(t0, data)
             except OSError:
-                _remount(logger) #, led)
+                _remount(logger, log)
 
             sample_total += 1
             rate_count   += 1
 
-            # ── 1 Hz diagnostics ─────────────────────────────────────────
+            # ── 1 Hz rate window ──────────────────────────────────────────────
             now = time.ticks_ms()
             if time.ticks_diff(now, rate_window_t) >= 1000:
                 achieved_hz   = rate_count
                 rate_count    = 0
                 rate_window_t = now
-
-                # Calibration is the last 4 elements of the 20-tuple
-                cs, cg, ca, cm = data[16], data[17], data[18], data[19]
-                print(
-                    "[LOG]  {:>6} samples | {:2d} Hz | buf={:2d} | "
-                    "cal sys={} gyro={} acc={} mag={}".format(
-                        sample_total, achieved_hz, logger.buffer_len,
-                        cs, cg, ca, cm,
-                    )
-                )
-
                 if achieved_hz < SAMPLE_RATE_HZ - 5:
-                    print("[WARN] Rate below target ({} Hz achieved)".format(achieved_hz))
+                    log.warn("RATE", "Below target: {} Hz (target {} Hz)".format(
+                        achieved_hz, SAMPLE_RATE_HZ))
 
-            # ── LED heartbeat ─────────────────────────────────────────────
-            #led.tick_logging(t0)
+            # ── Health summary every LOG_INTERVAL_SAMPLES ─────────────────────
+            if sample_total >= next_log_at:
+                next_log_at += LOG_INTERVAL_SAMPLES
+                cs, cg, ca, cm = int(data[16]), int(data[17]), int(data[18]), int(data[19])
+                free_mb = storage.sd_free_mb()
 
-            # ── Timing: sleep the unused portion of the 20 ms slot ────────
+                # Format total as "1k", "10k", etc. for readability
+                if sample_total >= 1000:
+                    count_str = "{}k".format(sample_total // 1000)
+                    if sample_total % 1000:
+                        count_str = "{}.{}k".format(
+                            sample_total // 1000, (sample_total % 1000) // 100)
+                else:
+                    count_str = str(sample_total)
+
+                log.info("LOG", (
+                    "{} entries written | {} Hz | buf={} | "
+                    "cal sys={} gyro={} acc={} mag={} | {} MB free"
+                ).format(
+                    count_str, achieved_hz, logger.buffer_len,
+                    cs, cg, ca, cm, free_mb,
+                ))
+
+            # ── Timing ────────────────────────────────────────────────────────
             elapsed   = time.ticks_diff(time.ticks_ms(), t0)
             remaining = SAMPLE_INTERVAL_MS - elapsed
             if remaining > 0:
@@ -168,18 +191,16 @@ def main():
             else:
                 overrun_count += 1
                 if overrun_count % 100 == 0:
-                    print("[WARN] {} loop overruns (last={} ms)".format(
+                    log.warn("RATE", "{} loop overruns (last={} ms)".format(
                         overrun_count, elapsed))
 
     except KeyboardInterrupt:
-        print()
-        print("[LOG]  KeyboardInterrupt — closing session …")
+        log.info("LOG", "KeyboardInterrupt — closing session")
 
     finally:
         logger.close_session()
         logger.unmount()
-        #led.off()
-        print("[LOG]  Done.  Total samples: {}".format(sample_total))
+        log.info("LOG", "Done.  Total samples: {}".format(sample_total))
 
 
 main()

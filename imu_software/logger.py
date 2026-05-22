@@ -1,25 +1,3 @@
-"""
-logger.py — Buffered CSV logger + structured log file for the ski IMU.
-
-Two classes:
-
-  FileLog   — Timestamped .log file writer.
-              Messages written before the SD card is ready are held in RAM
-              and flushed to disk when open() is called.
-
-  SDLogger  — Manages the SD card mount, the CSV session file, and delegates
-              all human-readable output to a FileLog instance.
-
-CSV column order:
-  datetime_cet, elapsed_ms,
-  euler_heading, euler_roll, euler_pitch,
-  quat_w, quat_x, quat_y, quat_z,
-  accel_x, accel_y, accel_z,
-  gyro_x, gyro_y, gyro_z,
-  gravity_x, gravity_y, gravity_z,
-  calibration_sys, calibration_gyro, calibration_accel, calibration_mag
-"""
-
 import uos
 import machine
 import time
@@ -127,14 +105,58 @@ class FileLog:
 # SPI / filename helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _bitbang_cmd0():
+    """Send CMD0 via raw GPIO before hardware SPI is created.
+
+    This pre-conditions the SD card into a known SPI-idle state (R1=0x01)
+    so the hardware SDCard driver starts from a clean baseline.  test.py
+    has the same step and reliably initialises the card; without it the
+    hardware SPI path sometimes fails on CMD9 (CSD read timeout).
+    """
+    cs   = machine.Pin(SPI_CS,   machine.Pin.OUT, value=1)
+    sck  = machine.Pin(SPI_CLK,  machine.Pin.OUT, value=0)
+    mosi = machine.Pin(SPI_MOSI, machine.Pin.OUT, value=1)
+    miso = machine.Pin(SPI_MISO, machine.Pin.IN,  machine.Pin.PULL_UP)
+
+    def _shift(byte):
+        r = 0
+        for i in range(7, -1, -1):
+            mosi.value((byte >> i) & 1)
+            sck.value(1)
+            r = (r << 1) | miso.value()
+            sck.value(0)
+        return r
+
+    for _ in range(80):          # ≥74 idle clocks with CS deasserted
+        sck.value(1)
+        sck.value(0)
+
+    cs.value(0)
+    for b in (0x40, 0x00, 0x00, 0x00, 0x00, 0x95):   # CMD0 + valid CRC
+        _shift(b)
+    r = 0xFF
+    for _ in range(16):          # wait for R1 response
+        r = _shift(0xFF)
+        if r != 0xFF:
+            break
+    cs.value(1)
+    _shift(0xFF)                 # 8 idle clocks after deselect
+    return r
+
+
 def _make_spi():
-    # MISO pull-up prevents the pin from floating low when the SD card
-    # tristates the line — without it the driver sees 0x00 as a valid R1
-    # response and falsely passes the entire init sequence.
+    # Pre-condition the card with a GPIO bit-bang CMD0 (same approach as
+    # test.py).  This puts the card in SPI-idle state before the hardware
+    # peripheral takes over, preventing CMD9 CSD timeouts.
+    _bitbang_cmd0()
+
+    # Create SPI at the operational speed directly.  Creating at a different
+    # speed and then reinitialising via SDCard.__init__ triggers two SSI
+    # peripheral resets and can confuse the card's state machine.
     miso = machine.Pin(SPI_MISO, machine.Pin.IN, machine.Pin.PULL_UP)
     return machine.SPI(
         SPI_ID,
-        baudrate=400_000,   # conservative init speed; SDCard uses SPI_BAUD
+        baudrate=SPI_BAUD,   # operational speed — no intermediate reinit needed
         polarity=0,
         phase=0,
         sck=machine.Pin(SPI_CLK),
@@ -223,6 +245,19 @@ class SDLogger:
         self._spi = _make_spi()
         cs = machine.Pin(SPI_CS, machine.Pin.OUT, value=1)
         self._sd = sdcard.SDCard(self._spi, cs, baudrate=SPI_BAUD)
+
+        # Warmup write + read on a scratch block before mounting the filesystem.
+        # test.py does exactly this and it is the reason test.py works reliably.
+        # Without it the first block read inside uos.mount() (block 0, MBR) hits
+        # the card's "first access delay" and times out after 4.8 s.
+        _buf = bytearray(b'\xA5\x5A' * 256)
+        try:
+            self._sd.writeblocks(1, _buf)
+            self._sd.readblocks(1, _buf)
+        except OSError:
+            pass   # if warmup fails, uos.mount() will raise a clear error
+        del _buf
+
         try:
             uos.mount(self._sd, _MOUNT)
         except OSError as exc:

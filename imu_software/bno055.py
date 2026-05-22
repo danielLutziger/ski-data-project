@@ -1,22 +1,3 @@
-"""
-bno055.py — Register-level MicroPython driver for the BNO055 9-axis IMU.
-
-Operates in NDOF (9-axis sensor fusion) mode and exposes:
-  - Euler angles (heading / roll / pitch) in degrees
-  - Quaternion (w, x, y, z), unit quaternion
-  - Linear acceleration (x, y, z) in m/s²  [gravity removed]
-  - Gyroscope (x, y, z) in deg/s            [see NOTE below]
-  - Gravity vector (x, y, z) in m/s²
-  - Calibration status (sys / gyro / accel / mag), each 0–3
-
-NOTE on gyro units: the firmware brief specifies "divide by 16 for rad/s".
-  The BNO055 default gyro unit is dps (degrees/s) with 16 LSB per dps.
-  Dividing by 16 therefore gives deg/s, not rad/s.  If true rad/s is
-  needed, multiply the result by math.pi / 180, or set the UNIT_SEL
-  register (0x3B) bit 1 = 1 and use a divisor of 900.
-  The values are stored in the CSV as-is from this driver.
-"""
-
 import struct
 import time
 

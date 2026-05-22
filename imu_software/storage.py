@@ -1,15 +1,3 @@
-"""
-storage.py — Storage safety checks for the ski logger.
-
-Runs at boot to:
-  1. Report RP2350 internal flash usage and list every file on it.
-  2. Confirm the SD card is mounted at /sd and report its free space.
-  3. Refuse to continue if SD card is missing or nearly full.
-  4. Guard file paths so nothing is ever written to internal flash.
-
-Call storage.check() before opening any CSV session.
-"""
-
 import os
 
 _SD_MOUNT       = "/sd"

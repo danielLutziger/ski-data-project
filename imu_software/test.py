@@ -1,22 +1,3 @@
-"""
-test.py — Three-phase integration test.
-
-PHASE 0  Storage audit — internal flash usage + SD card space check.
-          Aborts if SD card is missing or nearly full.
-          Lists any data files accidentally stored on internal flash.
-
-PHASE 1  BNO055 only — 10 s of sensor readings printed to serial.
-
-PHASE 2  SD card — mount, storage report, create SKI_NNN.CSV, write header.
-
-PHASE 3  Combined — read BNO055 at 50 Hz and stream rows to the CSV file.
-
-Wiring:
-  BNO055 (I2C0) : SDA=GP0   SCL=GP1
-  SD card (SPI0): CLK=GP2   MOSI=GP3  MISO=GP4  CS=GP5
-  SD module VCC → RP2350 VBUS (5V, not 3V3)
-"""
-
 import machine
 import time
 import struct

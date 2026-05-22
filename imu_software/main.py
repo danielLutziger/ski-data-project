@@ -1,21 +1,3 @@
-"""
-main.py — Entry point for the RP2350 ski IMU data logger.
-
-Boot sequence:
-  1.  3 s startup delay  (BNO055 power-on settling)
-  2.  I2C scan + BNO055 detect/init
-  3.  Internal flash audit (storage.report without SD)
-  4.  Mount SD card
-  5.  Full storage report (with SD)
-  6.  Open CSV + LOG session files
-  7.  Sample BNO055 at 50 Hz; flush to SD every 50 samples (~1 s)
-  8.  Write health summary to log every 10 s (LOG_INTERVAL_SAMPLES)
-  9.  Power-loss or Ctrl-C → close session gracefully
-
-All human-readable output goes to both serial (USB) and the .log file on
-the SD card.  The device is designed to run unattended without a terminal.
-"""
-
 import machine
 import time
 

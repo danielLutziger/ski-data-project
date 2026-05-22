@@ -148,11 +148,44 @@ and SD free space.
 Handles remount on transient SD write errors and closes the session cleanly on
 `KeyboardInterrupt`.
 
+### [`main.py`](main.py) — boot sequence
+1. 3 s startup delay for BNO055 to settle
+2. I2C scan + BNO055 detect and init
+3. Internal flash audit
+4. SD card mount
+5. Full storage report (with SD)
+6. Open CSV + matching `.log` session files
+7. Sample at 50 Hz; flush to SD every 50 samples (~1 s)
+8. Write health summary to log every 10 s (`LOG_INTERVAL_SAMPLES`)
+9. Power-loss or `Ctrl+C` → close session gracefully
+
+All output goes to both USB serial and the `.log` file. Designed to run
+unattended without a terminal.
+
 ### [`test.py`](test.py)
-Three-phase integration test, intended to be run while connected to a PC via
-Thonny. Verifies the BNO055 (10 s of live readings) and the full SD card
-pipeline (mount → block read/write → CSV create → BNO055 → CSV append)
-without touching `main.py`'s production logic.
+Four-phase integration test — run while connected to a PC via Thonny.
+
+| Phase | What it tests |
+|-------|--------------|
+| 0 | Storage audit — internal flash usage, SD space check |
+| 1 | BNO055 only — 10 s of live sensor readings to serial |
+| 2 | SD card — mount, storage report, create `SKI_NNN.CSV` |
+| 3 | Combined — BNO055 at 50 Hz streamed into the CSV |
+
+### [`test_hardware.py`](test_hardware.py)
+Hardware bring-up test suite — run before every field deployment.
+
+| Group | Tests |
+|-------|-------|
+| `INFRA` | MicroPython version, flash space, no stray data files |
+| `PINS` | MISO pull-up, CS toggle, SDA/SCL not shorted |
+| `I2C` | Bus scan, BNO055 address, chip ID `0xA0`, self-test |
+| `SPI` | SD driver init, single-block read, write-verify, multi-block write |
+| `FS` | FAT32 mount, free space ≥ 50 MB, file create/read/delete |
+| `IMU` | NDOF mode, Euler range, quaternion unit, gravity magnitude, sample rate, data freshness |
+
+Tests that depend on missing hardware are automatically skipped rather than
+erroring. Results are saved to `/sd/TEST_HW.log` if the card is available.
 
 ---
 
@@ -169,9 +202,17 @@ Each row is one 50 Hz sample. Columns:
 | `euler_pitch` | ° | Pitch |
 | `quat_w/x/y/z` | — | Unit quaternion |
 | `accel_x/y/z` | m/s² | Linear acceleration (gravity removed) |
-| `gyro_x/y/z` | °/s | Angular velocity |
+| `gyro_x/y/z` | °/s | Angular velocity (see note below) |
 | `gravity_x/y/z` | m/s² | Gravity vector |
 | `calibration_sys/gyro/accel/mag` | 0–3 | BNO055 calibration status (3 = fully calibrated) |
+
+> **Gyro units:** The BNO055 default unit is degrees/s with 16 LSB per °/s.
+> The driver divides by 16, giving **°/s** — not rad/s as the datasheet
+> header implies. To convert to rad/s multiply by `π / 180 ≈ 0.01745`.
+
+> **`sdcard.py` source:** Based on the MicroPython-lib reference driver
+> (MIT licence, Damien P. George et al.), bundled here so the firmware is
+> fully self-contained on the device filesystem.
 
 ---
 

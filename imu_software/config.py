@@ -1,20 +1,3 @@
-"""
-config.py — Hardware pin assignments and tunable constants.
-
-Wiring (confirmed working):
-  BNO055 → RP2350 (I2C0)
-    SDA → GP0  |  SCL → GP1  |  VCC → 3.3V  |  GND → GND
-
-  SD card module → RP2350 (SPI0)
-    CLK  → GP2  |  MOSI → GP3  |  MISO → GP4  |  CS → GP5
-    VCC  → VBUS (5V)  |  GND → GND
-
-  Note: module VCC must be 5V so its onboard LDO delivers 3.3V to the SD
-  card.  MISO is safe because the SD card itself drives at 3.3V.
-  SPI runs at 100 kHz — the level-shifter adds propagation delay that causes
-  data-token misses at higher rates.
-"""
-
 # ── I2C (BNO055) ──────────────────────────────────────────────────────────────
 I2C_ID   = 0
 I2C_SDA  = 0

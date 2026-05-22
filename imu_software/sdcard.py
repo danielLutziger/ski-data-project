@@ -1,18 +1,3 @@
-"""
-sdcard.py — MicroPython SPI SD card block device driver.
-
-Source: micropython/micropython-lib (MIT licence, Damien P. George et al.)
-Included here so the firmware is fully self-contained — copy this file to
-the RP2350 filesystem alongside the other .py files.
-
-Usage:
-    import sdcard, machine, uos
-    spi = machine.SPI(0, ...)
-    cs  = machine.Pin(17, machine.Pin.OUT, value=1)
-    sd  = sdcard.SDCard(spi, cs)
-    uos.mount(sd, "/sd")
-"""
-
 from micropython import const
 import time
 
@@ -43,27 +28,15 @@ class SDCard:
         self.spi.init(baudrate=baudrate, phase=0, polarity=0)
         self._baudrate = baudrate
 
-        # Clock card ≥ 74 cycles with CS deasserted
+        # Clock card ≥ 74 cycles with CS deasserted, then brief settle delay
         for _ in range(80):
             self.spi.write(b"\xff")
-        time.sleep(5)
+        time.sleep(0.5)
 
         # CMD0 — software reset (expect R1 = 0x01 IDLE)
-        # Print every response for the first 5 attempts so we can see what
-        # the card (or floating MISO) is actually sending back.
-        # -1  → timeout: card never drove MISO low  (wiring or CS problem)
-        # 0x00 → MISO floating low OR card in transfer state
-        # 0x01 → correct IDLE response, card in SPI mode
-        print("  SD CMD0 responses (expect 0x01):")
-        for attempt in range(20):
+        for _ in range(20):
             r = self._cmd(0, 0, 0x95)
-            if attempt < 5:
-                print("    attempt {}: 0x{:02x}".format(attempt, r & 0xFF))
-            if r == _R1_IDLE_STATE:
-                print("  SD CMD0 OK — card in SPI mode")
-                break
-            if r == 0x00:
-                print("  SD CMD0: 0x00 — MISO may be floating low (no pull-up)")
+            if r == _R1_IDLE_STATE or r == 0x00:
                 break
         else:
             raise OSError("no SD card")
@@ -78,10 +51,20 @@ class SDCard:
             raise OSError("SD: unknown card version (CMD8 response 0x{:02x})".format(r))
 
         # CMD9 — read CSD to get card capacity
-        if self._cmd(9, 0, 0, final=0, release=False) != 0:
-            raise OSError("SD: CMD9 failed")
+        # Retry up to 3 times: on a first run after a busy session (e.g. many
+        # writes) the card may accept CMD9 but delay the data token while it
+        # finishes internal housekeeping.  A short wait and retry recovers it.
         csd = bytearray(16)
-        self._readinto(csd)
+        for _attempt in range(3):
+            if self._cmd(9, 0, 0, final=0, release=False) != 0:
+                raise OSError("SD: CMD9 failed")
+            try:
+                self._readinto(csd)
+                break
+            except OSError:
+                if _attempt == 2:
+                    raise
+                time.sleep(0.5)
         if csd[0] & 0xC0 == 0x40:          # CSD v2 (SDHC/SDXC)
             self.sectors = ((csd[8] << 8 | csd[9]) + 1) * 1024
         elif csd[0] & 0xC0 == 0x00:        # CSD v1 (≤2 GB)
@@ -114,27 +97,16 @@ class SDCard:
         raise OSError("SD: v1 init timeout")
 
     def _init_v2(self):
-        # Try HCS=1 (SDHC/SDXC) first, then HCS=0 (SDSC) as fallback.
-        # Some modules need > 5 s from cold power-on, so budget 5 s per variant.
         for hcs_arg in (0x40000000, 0x00000000):
-            print("  ACMD41 loop HCS={} (0x{:08x})".format(1 if hcs_arg else 0, hcs_arg))
-            for i in range(100):    # 100 × 50 ms = 5 s
-                r55 = self._cmd(55, 0, 0)
-                r41 = self._cmd(41, hcs_arg, 0)
-                if i < 5:
-                    print("    [{}] CMD55=0x{:02x}  ACMD41=0x{:02x}".format(
-                        i, r55 & 0xFF, r41 & 0xFF))
-                if r41 == 0:
-                    # Read OCR (CMD58) to get CCS bit and determine addressing mode
+            for _ in range(100):    # 100 × 50 ms = 5 s
+                self._cmd(55, 0, 0)
+                if self._cmd(41, hcs_arg, 0) == 0:
                     r58 = self._cmd(58, 0, 0, release=False)
                     ocr = bytearray(4)
                     self.spi.readinto(ocr, 0xFF)
                     self.cs(1)
                     self.spi.write(b"\xff")
-                    # CCS bit (OCR bit 30 = ocr[0] bit 6): 1→SDHC block addr, 0→SDSC byte addr
                     self.cdv = 1 if (r58 == 0 and (ocr[0] & 0x40)) else 512
-                    print("  CMD58 OCR: {:02x}{:02x}{:02x}{:02x}  cdv={} r58=0x{:02x}".format(
-                        ocr[0], ocr[1], ocr[2], ocr[3], self.cdv, r58 & 0xFF))
                     return
                 time.sleep(0.05)
         raise OSError("SD: v2 init timeout")
@@ -172,19 +144,12 @@ class SDCard:
 
     def _readinto(self, buf):
         self.cs(0)
-        count = 0
         for _ in range(_DATA_TIMEOUT):
             self.spi.readinto(self.tokenbuf, 0xFF)
-            count += 1
-            if count <= 10:
-                print("  readinto byte {}: 0x{:02x}".format(count, self.tokenbuf[0]))
             if self.tokenbuf[0] == _TOKEN_DATA:
-                print("  ✓ Got data token at byte {}".format(count))
                 break
         else:
             self.cs(1)
-            print("_readinto: no 0xFE after {} bytes, last=0x{:02x}".format(
-                count, self.tokenbuf[0]))
             raise OSError("SD: read data timeout")
 
         if len(buf) == 512:
@@ -225,23 +190,17 @@ class SDCard:
     # ── Block device interface (required by uos.mount) ────────────────────
 
     def readblocks(self, block_num, buf, offset=None):
-        # 8 idle clocks with CS high so the card sees a clean gap before CMD17/18
         self.cs(1)
         self.spi.write(b"\xff")
         nblocks = len(buf) // 512
-        print("  readblocks: block={} nblocks={} cdv={}".format(block_num, nblocks, self.cdv))
         assert nblocks and not len(buf) % 512
         if nblocks == 1:
-            r = self._cmd(17, block_num * self.cdv, 0, release=False)
-            print("  CMD17 addr={} r1=0x{:02x}".format(block_num * self.cdv, r & 0xFF))
-            if r != 0:
+            if self._cmd(17, block_num * self.cdv, 0, release=False) != 0:
                 self.cs(1)
                 raise OSError("SD: CMD17 read error")
             self._readinto(buf)
         else:
-            r = self._cmd(18, block_num * self.cdv, 0, release=False)
-            print("  CMD18 addr={} r1=0x{:02x}".format(block_num * self.cdv, r & 0xFF))
-            if r != 0:
+            if self._cmd(18, block_num * self.cdv, 0, release=False) != 0:
                 self.cs(1)
                 raise OSError("SD: CMD18 read error")
             mv, off = memoryview(buf), 0
@@ -254,16 +213,13 @@ class SDCard:
 
     def writeblocks(self, block_num, buf, offset=None):
         nblocks = len(buf) // 512
-        print("  writeblocks: block={} nblocks={}".format(block_num, nblocks))
         assert nblocks and not len(buf) % 512
         if nblocks == 1:
             # release=False keeps CS LOW through _write_block; a CS pulse
             # between CMD24 and the data packet confuses some cards.
-            r24 = self._cmd(24, block_num * self.cdv, 0, release=False)
-            print("  CMD24 addr={} r1=0x{:02x}".format(block_num * self.cdv, r24 & 0xFF))
-            if r24 != 0:
+            if self._cmd(24, block_num * self.cdv, 0, release=False) != 0:
                 self.cs(1)
-                raise OSError("SD: CMD24 write error (r1=0x{:02x})".format(r24 & 0xFF))
+                raise OSError("SD: CMD24 write error")
             self._write_block(_TOKEN_DATA, buf)
         else:
             if self._cmd(25, block_num * self.cdv, 0, release=False) != 0:

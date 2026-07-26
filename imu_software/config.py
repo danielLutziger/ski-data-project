@@ -25,14 +25,14 @@ BUFFER_SIZE = 50
 # 500 samples @ 50 Hz = every 10 seconds
 LOG_INTERVAL_SAMPLES = 500
 
-# ── Session ───────────────────────────────────────────────────────────────────
+# Session
 STARTUP_DELAY_S = 3     # Allow BNO055 to settle after power-on
 
 # Filename prefixes (FAT32 8.3-compatible fallback when RTC date is default)
 CSV_LONG_PREFIX     = "ski_"    # ski_YYYYMMDD_HHMMSS.csv
 CSV_FALLBACK_PREFIX = "SKI_"    # SKI_001.CSV … SKI_999.CSV
 
-# ── Timezone ──────────────────────────────────────────────────────────────────
+# Timezone
 # Offset added to RTC (which stores UTC) for the CSV datetime column.
 # Set to 1 for CET (winter) or 2 for CEST (summer).
 CET_OFFSET_H = 1

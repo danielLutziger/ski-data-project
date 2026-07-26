@@ -19,11 +19,7 @@ CSV_HEADER = (
     "calibration_sys,calibration_gyro,calibration_accel,calibration_mag\n"
 )
 
-
-# ─────────────────────────────────────────────────────────────────────────────
 # FileLog
-# ─────────────────────────────────────────────────────────────────────────────
-
 class FileLog:
     """
     Writes timestamped, levelled log entries to a .log file on the SD card.
@@ -66,8 +62,7 @@ class FileLog:
             self._file.flush()
             self._buf.clear()
 
-    # ── Level helpers ─────────────────────────────────────────────────────────
-
+    # Level helpers
     def info(self, tag, msg):
         self._append("INFO ", tag, msg)
 
@@ -77,8 +72,7 @@ class FileLog:
     def error(self, tag, msg):
         self._append("ERROR", tag, msg, flush_now=True)
 
-    # ── Internal ──────────────────────────────────────────────────────────────
-
+    # Internal
     def _append(self, level, tag, msg, flush_now=False):
         line = "{} [{}] [{:<5}] {}\n".format(self._ts(), level, tag, msg)
         print(line, end="")        # always echo to serial (USB debug)
@@ -101,10 +95,7 @@ class FileLog:
             return "????T??:??:??+{:02d}:00".format(self._offset_h)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SPI / filename helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _bitbang_cmd0():
     """Send CMD0 via raw GPIO before hardware SPI is created.
 
@@ -201,10 +192,7 @@ def _build_filename(rtc):
     return _next_fallback_name()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # SDLogger
-# ─────────────────────────────────────────────────────────────────────────────
-
 class SDLogger:
     """
     Manages SD card lifecycle and buffered CSV + log writing.
@@ -237,8 +225,7 @@ class SDLogger:
         self._ts_cached_s    = -1   # last elapsed_s we formatted
         self._ts_cached_hms  = ""   # "HH:MM:SS" string for that second
 
-    # ── Mount / unmount ───────────────────────────────────────────────────────
-
+    # Mount / unmount
     def mount(self):
         """Initialise SPI and mount the FAT32 SD card.  Raises OSError on failure."""
         import sdcard
@@ -279,8 +266,7 @@ class SDLogger:
             pass
         self._info("SD", "Unmounted")
 
-    # ── Session ───────────────────────────────────────────────────────────────
-
+    # Session
     def open_session(self, rtc=None):
         """
         Create matching CSV + log files on /sd, write headers, return CSV name.
@@ -317,8 +303,7 @@ class SDLogger:
             self._file = None
         self._info("LOG", "Session closed — {} samples written".format(self._total))
 
-    # ── Logging ───────────────────────────────────────────────────────────────
-
+    # Logging
     def log(self, t0, data):
         """
         Append one 50 Hz sample row to the in-RAM buffer.
@@ -392,8 +377,7 @@ class SDLogger:
         if self._log:
             self._log.flush()
 
-    # ── Properties ────────────────────────────────────────────────────────────
-
+    # Properties
     @property
     def filename(self):
         return self._filename
@@ -406,8 +390,7 @@ class SDLogger:
     def buffer_len(self):
         return len(self._buf)
 
-    # ── Internal helpers ──────────────────────────────────────────────────────
-
+    # Internal helpers
     def _init_ts(self, rtc):
         """Pre-compute timestamp state from RTC at session open."""
         self._ts_start_ticks = time.ticks_ms()

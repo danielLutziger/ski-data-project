@@ -12,10 +12,7 @@ from logger  import FileLog, SDLogger
 import storage
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Helpers
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _wait_bno055(bno, log):
     """Block until BNO055 responds on I2C, logging each retry."""
     while not bno.detect():
@@ -38,18 +35,15 @@ def _remount(logger, log):
             time.sleep(10)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Main
-# ─────────────────────────────────────────────────────────────────────────────
-
 def main():
-    # ── RTC (needed early so log timestamps are correct) ──────────────────────
+    # RTC (needed early so log timestamps are correct)
     try:
         rtc = machine.RTC()
     except Exception:
         rtc = None
 
-    # ── FileLog: created before SD is mounted so boot messages are buffered ───
+    # FileLog: created before SD is mounted so boot messages are buffered ───
     log = FileLog(rtc=rtc, cet_offset_h=CET_OFFSET_H)
 
     log.info("BOOT", "=" * 44)
@@ -58,7 +52,7 @@ def main():
     log.info("BOOT", "Waiting {} s for BNO055 to settle".format(STARTUP_DELAY_S))
     time.sleep(STARTUP_DELAY_S)
 
-    # ── I2C + BNO055 ──────────────────────────────────────────────────────────
+    # I2C + BNO055
     i2c = machine.I2C(
         I2C_ID,
         scl=machine.Pin(I2C_SCL),
@@ -72,7 +66,7 @@ def main():
     _wait_bno055(bno, log)
     bno.init()
 
-    # ── Internal flash audit (SD not mounted yet) ─────────────────────────────
+    # Internal flash audit (SD not mounted yet)
     log.info("FLASH", "Internal flash audit:")
     try:
         import os
@@ -86,7 +80,7 @@ def main():
     except Exception as exc:
         log.warn("FLASH", "Could not read flash: {}".format(exc))
 
-    # ── SD card ───────────────────────────────────────────────────────────────
+    # SD card
     logger = SDLogger(log=log)
     try:
         logger.mount()
@@ -102,7 +96,7 @@ def main():
         while True:
             time.sleep(10)
 
-    # ── Open session (CSV + LOG files created here) ───────────────────────────
+    # Open session (CSV + LOG files created here)
     fname = logger.open_session(rtc=rtc)
     storage.guard_path("/sd/" + fname)
 
@@ -110,7 +104,7 @@ def main():
         SAMPLE_RATE_HZ, SAMPLE_INTERVAL_MS))
     log.info("LOG", "Logging started — running unattended")
 
-    # ── Sampling loop ─────────────────────────────────────────────────────────
+    # Sampling loop
     sample_total   = 0
     rate_count     = 0
     rate_window_t  = time.ticks_ms()
@@ -132,7 +126,7 @@ def main():
             sample_total += 1
             rate_count   += 1
 
-            # ── 1 Hz rate window ──────────────────────────────────────────────
+            # 1 Hz rate window
             now = time.ticks_ms()
             if time.ticks_diff(now, rate_window_t) >= 1000:
                 achieved_hz   = rate_count
@@ -142,7 +136,7 @@ def main():
                     log.warn("RATE", "Below target: {} Hz (target {} Hz)".format(
                         achieved_hz, SAMPLE_RATE_HZ))
 
-            # ── Health summary every LOG_INTERVAL_SAMPLES ─────────────────────
+            # Health summary every LOG_INTERVAL_SAMPLES
             if sample_total >= next_log_at:
                 next_log_at += LOG_INTERVAL_SAMPLES
                 cs, cg, ca, cm = int(data[16]), int(data[17]), int(data[18]), int(data[19])
@@ -165,7 +159,7 @@ def main():
                     cs, cg, ca, cm, free_mb,
                 ))
 
-            # ── Timing ────────────────────────────────────────────────────────
+            # Timing
             elapsed   = time.ticks_diff(time.ticks_ms(), t0)
             remaining = SAMPLE_INTERVAL_MS - elapsed
             if remaining > 0:

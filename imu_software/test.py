@@ -20,7 +20,7 @@ CSV_HEADER = (
 )
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────
+# Helpers
 
 def init_i2c():
     i2c = machine.I2C(0, scl=machine.Pin(1), sda=machine.Pin(0), freq=400_000)
@@ -165,12 +165,11 @@ def next_filename():
     return "SKI_{:03d}.CSV".format(n)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PHASE 0 — Internal flash audit (runs before anything else)
-# ─────────────────────────────────────────────────────────────────────────────
+
+# PHASE 0 - Internal flash audit (runs before anything else)
 print()
 print("=" * 50)
-print("PHASE 0 — Internal flash audit")
+print("PHASE 0 - Internal flash audit")
 print("=" * 50)
 
 # Show internal flash stats and warn about any data files found there.
@@ -210,12 +209,10 @@ print()
 print("  PHASE 0 OK — SD card storage check will run after mount in Phase 2")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PHASE 1 — BNO055 only: 10 s to serial
-# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 1 - BNO055 only: 10 s to serial
 print()
 print("=" * 50)
-print("PHASE 1 — BNO055 sensor check (10 s)")
+print("PHASE 1 - BNO055 sensor check (10 s)")
 print("=" * 50)
 
 try:
@@ -253,12 +250,10 @@ print()
 print("  PHASE 1 OK — BNO055 is working")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PHASE 2 — SD card: mount, storage report, create CSV file
-# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 2 - SD card: mount, storage report, create CSV file
 print()
 print("=" * 50)
-print("PHASE 2 — SD card: mount + storage check + create file")
+print("PHASE 2 - SD card: mount + storage check + create file")
 print("=" * 50)
 
 try:
@@ -295,12 +290,10 @@ print()
 print("  PHASE 2 OK — file created on SD card")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# PHASE 3 — Combined: BNO055 → CSV on SD card for 10 s
-# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 3 - Combined: BNO055 → CSV on SD card for 10 s
 print()
 print("=" * 50)
-print("PHASE 3 — BNO055 → {} for 10 s".format(filename))
+print("PHASE 3 - BNO055 → {} for 10 s".format(filename))
 print("=" * 50)
 
 buf   = []

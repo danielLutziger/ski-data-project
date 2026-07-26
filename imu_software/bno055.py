@@ -12,11 +12,11 @@ _REG_QUAT_W   = 0x20   # 8 bytes: w x y z
 _REG_LIN_ACC  = 0x28   # 6 bytes: x y z  (linear accel, gravity removed)
 _REG_GRAVITY  = 0x2E   # 6 bytes: x y z
 
-# ── Operation modes ───────────────────────────────────────────────────────
+# Operation modes
 _MODE_CONFIG  = 0x00
 _MODE_NDOF    = 0x0C
 
-# ── Scale factors ─────────────────────────────────────────────────────────
+# Scale factors
 _SCALE_EULER  = 16.0      # LSB/degree  → degrees
 _SCALE_QUAT   = 16384.0   # LSB         → unit quaternion component
 _SCALE_ACCEL  = 100.0     # LSB/(m/s²)  → m/s²
@@ -34,7 +34,7 @@ class BNO055:
         self._buf8 = bytearray(8)
         self._buf1 = bytearray(1)
 
-    # ── Low-level helpers ─────────────────────────────────────────────────
+    # Low-level helpers
 
     def _read_into(self, reg, buf):
         self._i2c.readfrom_mem_into(self._addr, reg, buf)
@@ -43,7 +43,7 @@ class BNO055:
         self._buf1[0] = value
         self._i2c.writeto_mem(self._addr, reg, self._buf1)
 
-    # ── Detection and initialisation ──────────────────────────────────────
+    # Detection and initialisation
 
     def detect(self):
         """Return True if a BNO055 is present and responding on I2C."""
@@ -64,7 +64,7 @@ class BNO055:
         time.sleep_ms(20)   # datasheet: 7 ms typical, 19 ms max
         print("[BNO055] NDOF mode active")
 
-    # ── Individual sensor reads ───────────────────────────────────────────
+    # Individual sensor reads
 
     def euler(self):
         """Return (heading, roll, pitch) in degrees."""
@@ -110,7 +110,7 @@ class BNO055:
         mag  =  raw       & 0x03
         return sys, gyro, accel, mag
 
-    # ── Batched read (minimises I2C bus transactions) ─────────────────────
+    # Batched read (minimises I2C bus transactions)
 
     def read_all(self):
         """

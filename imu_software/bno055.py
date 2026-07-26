@@ -1,7 +1,7 @@
 import struct
 import time
 
-# ── Register addresses ────────────────────────────────────────────────────
+# Register addresses
 _REG_CHIP_ID  = 0x00
 _REG_OPR_MODE = 0x3D
 _REG_CALIB    = 0x35

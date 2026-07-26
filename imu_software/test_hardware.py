@@ -11,10 +11,8 @@ from config import (
 )
 from bno055 import BNO055
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Shared hardware handles — initialised once, reused across tests
-# ─────────────────────────────────────────────────────────────────────────────
 
+# Shared hardware handles — initialised once, reused across tests
 _i2c        = None
 _bno        = None
 _sd         = None
@@ -76,10 +74,7 @@ def _unmount_sd():
         # filesystem unmount and can be re-mounted without re-initialising SPI.
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Test runner
-# ─────────────────────────────────────────────────────────────────────────────
-
 class _Runner:
     _COL = 30   # column width for test names
 
@@ -148,10 +143,7 @@ class _Runner:
         return ok
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [INFRA] Infrastructure — independent of all external hardware
-# ─────────────────────────────────────────────────────────────────────────────
-
+# [INFRA] Infrastructure - independent of all external hardware
 def test_micropython_version():
     """[independent] MicroPython is running and reports a version."""
     import sys
@@ -178,10 +170,7 @@ def test_no_data_files_on_flash():
     return "No data files on flash"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # [PINS] GPIO pin states — independent, checked before SPI/I2C init
-# ─────────────────────────────────────────────────────────────────────────────
-
 def test_miso_pullup():
     """[independent] MISO pin can be configured with pull-up (no hard short to GND).
     Note: a powered SD module may actively drive MISO LOW before SPI init —
@@ -213,10 +202,7 @@ def test_sda_scl_not_shorted():
     return "GP{} (SDA) and GP{} (SCL) both HIGH".format(I2C_SDA, I2C_SCL)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # [I2C] I2C bus and BNO055 register communication
-# ─────────────────────────────────────────────────────────────────────────────
-
 def test_i2c_bus_has_devices():
     """[imu] At least one device responds on the I2C bus."""
     devices = _get_i2c().scan()
@@ -268,10 +254,7 @@ def test_bno055_self_test_result():
     return "ST_RESULT=0x{:02X}  ACC MAG GYR MCU all pass".format(result)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# [SPI] Raw SPI SD card driver — block device level
-# ─────────────────────────────────────────────────────────────────────────────
-
+# [SPI] Raw SPI SD card driver - block device level
 def test_sd_driver_init():
     """[sd] SDCard driver initialises without error (CMD0→CMD8→ACMD41→CMD9)."""
     sd = _get_sd()
@@ -329,11 +312,7 @@ def test_sd_multi_block_write():
     finally:
         sd.writeblocks(10, saved)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# [FS] FAT32 filesystem — requires SD card driver to be working
-# ─────────────────────────────────────────────────────────────────────────────
-
+# [FS] FAT32 filesystem - requires SD card driver to be working
 def _sd_not_init():
     try:
         _get_sd()
@@ -379,11 +358,7 @@ def test_sd_create_read_delete_file():
         except OSError:
             pass
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# [IMU] BNO055 sensor output — requires BNO055 in NDOF mode
-# ─────────────────────────────────────────────────────────────────────────────
-
+# [IMU] BNO055 sensor output - requires BNO055 in NDOF mode
 def _bno_not_init():
     try:
         _get_bno()
@@ -498,10 +473,7 @@ def test_all_fields_are_floats():
     return "20-tuple returned  all values numeric"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
 # Entry point
-# ─────────────────────────────────────────────────────────────────────────────
-
 def run_all():
     r = _Runner()
 

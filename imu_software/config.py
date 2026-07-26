@@ -1,4 +1,4 @@
-# ── I2C (BNO055) ──────────────────────────────────────────────────────────────
+# I2C (BNO055)
 I2C_ID   = 0
 I2C_SDA  = 0
 I2C_SCL  = 1
@@ -6,7 +6,7 @@ I2C_FREQ = 400_000
 
 BNO055_ADDR = 0x28
 
-# ── SPI (SD card) ─────────────────────────────────────────────────────────────
+# SPI (SD card)
 SPI_ID   = 0
 SPI_CLK  = 2
 SPI_MOSI = 3
@@ -14,7 +14,7 @@ SPI_MISO = 4
 SPI_CS   = 5
 SPI_BAUD = 100_000      # 100 kHz — reliable with this level-shifter module
 
-# ── Sampling ──────────────────────────────────────────────────────────────────
+# Sampling
 SAMPLE_RATE_HZ     = 50
 SAMPLE_INTERVAL_MS = 1000 // SAMPLE_RATE_HZ   # 20 ms
 

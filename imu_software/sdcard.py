@@ -50,7 +50,7 @@ class SDCard:
         else:
             raise OSError("SD: unknown card version (CMD8 response 0x{:02x})".format(r))
 
-        # CMD9 — read CSD to get card capacity
+        # CMD9 - read CSD to get card capacity
         # Retry up to 3 times: on a first run after a busy session (e.g. many
         # writes) the card may accept CMD9 but delay the data token while it
         # finishes internal housekeeping.  A short wait and retry recovers it.
@@ -75,7 +75,7 @@ class SDCard:
         else:
             raise OSError("SD: unsupported CSD format")
 
-        # CMD16 — fix block length to 512 bytes
+        # CMD16 - fix block length to 512 bytes
         # SDHC/SDXC cards (cdv=1) have a fixed 512-byte block size by spec;
         # sending CMD16 is a no-op but some cards enter an internal state that
         # delays the first CMD17 data response. Skip it for SDHC.
@@ -86,7 +86,7 @@ class SDCard:
         # Let the card settle after init before the first data command.
         time.sleep(0.1)
 
-    # ── Card initialisation helpers ───────────────────────────────────────
+    # Card initialisation helpers
 
     def _init_v1(self):
         for _ in range(_CMD_TIMEOUT):
@@ -111,7 +111,7 @@ class SDCard:
                 time.sleep(0.05)
         raise OSError("SD: v2 init timeout")
     
-    # ── Low-level SPI primitives ──────────────────────────────────────────
+    # Low-level SPI primitives
 
     def _cmd(self, cmd, arg, crc, final=0, release=True, skip1=False):
         self.cs(0)
@@ -187,7 +187,7 @@ class SDCard:
         self.cs(1)
         self.spi.write(b"\xff")
 
-    # ── Block device interface (required by uos.mount) ────────────────────
+    # Block device interface (required by uos.mount)
 
     def readblocks(self, block_num, buf, offset=None):
         self.cs(1)
